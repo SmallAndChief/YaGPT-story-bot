@@ -38,7 +38,7 @@ bot.set_my_commands([BotCommand('start', 'начало работы'),
                      BotCommand('begin', 'начать генерить')])
 
 STORY_CHOICES = {"genre": ["хоррор", "фантастика", "детектив", "комедия"],
-                 "character": ["доктор холмс", "гарри поттер", "бабадук", "павел воля"],
+                 "character": ["доктор холмс", "гермиона", "кровавая мери", "павел воля"],
                  "setting": ["город", "магическая академия", "заброшка", "парк развлечений"]}
 
 
@@ -78,10 +78,12 @@ def new_story_message(message):
     if is_limit_users():
         bot.send_message(chat_id,
                          text="Достигнут лимит пользователей. Вы не сможете воспользоваться ботом.")
+        logging.info("Достигнут лимит пользователей")
         return
     elif is_limit_sessions(user_id):
         bot.send_message(chat_id,
                          text="Достигнут лимит историй. Вы не сможете воспользоваться ботом.")
+        logging.info(f"Достигнут лимит сессий {user_id}")
         return
     logging.info(f'Начата ноовая история {user_id}')
     delete_user(user_id)
@@ -124,7 +126,9 @@ def character_message(message):
     else:
         update_row_value(user_id, "character", character)
         bot.send_message(chat_id,
-                         text="Выберите сеттинг с помощью кнопок",
+                         text=("Выберите сеттинг с помощью кнопок:\nГород - небольшой провинциальный городок"
+                               "\nЗаброшка - старый заброшенный дом с кучей пыли\nПарк развлечений - место"
+                               "похожее на дисней ленд\nАкадемия волшебства - что-то, напоминающее Хогвартс"),
                          reply_markup=setting_markup)
         logging.info(f'Выбран персонаж {user_id}')
         bot.register_next_step_handler(message, setting_message)
