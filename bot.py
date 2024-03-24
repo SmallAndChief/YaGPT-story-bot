@@ -233,31 +233,36 @@ def gpt_request(message, begin=False):
             insert_row(DB_TABLE_PROMTS_NAME, "(user_id, session_id, role, content)",
                        (user_id, session_id, "user", content))
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-
-    messages = get_dialogue_for_user(user_id, session_id)
-    tokens = gpt.count_tokens_in_dialog(messages, iam_token)
-    if tokens >= MAX_TOKENS_IN_SESSION:
-        markup.add(help_button, new_button)
-        bot.send_message(chat_id,
-                         text="Превышен лимит токенов на историю. Начните снова /new_story",
-                         reply_markup=markup)
-        return
-    elif tokens + 150 >= MAX_TOKENS_IN_SESSION:
-        warning = "\nТокены кончаются. Советую закончить историю."
-    resp = gpt.make_promt(messages, iam_token)
-    answer = gpt.process_resp(resp)
-    if answer:
-        markup.add(end_button, help_button)
-        bot.send_message(chat_id,
-                         text=answer + warning,
-                         reply_markup=markup)
-        insert_row(DB_TABLE_PROMTS_NAME, "(user_id, session_id, role, content)",
-                   (user_id, session_id, "assistant", answer))
-        if end:
+    try:
+        messages = get_dialogue_for_user(user_id, session_id)
+        tokens = gpt.count_tokens_in_dialog(messages, iam_token)
+        if tokens >= MAX_TOKENS_IN_SESSION:
+            markup.add(help_button, new_button)
+            bot.send_message(chat_id,
+                             text="Превышен лимит токенов на историю. Начните снова /new_story",
+                             reply_markup=markup)
             return
-        bot.register_next_step_handler(message, gpt_request)
-    else:
-        markup.add(help_button, begin_button, new_button)
+        elif tokens + 150 >= MAX_TOKENS_IN_SESSION:
+            warning = "\nТокены кончаются. Советую закончить историю."
+        resp = gpt.make_promt(messages, iam_token)
+        answer = gpt.process_resp(resp)
+        if answer:
+            markup.add(end_button, help_button)
+            bot.send_message(chat_id,
+                             text=answer + warning,
+                             reply_markup=markup)
+            insert_row(DB_TABLE_PROMTS_NAME, "(user_id, session_id, role, content)",
+                       (user_id, session_id, "assistant", answer))
+            if end:
+                return
+            bot.register_next_step_handler(message, gpt_request)
+        else:
+            markup.add(help_button, begin_button, new_button)
+            bot.send_message(chat_id,
+                             text=("Произошла ошибка. Попробуйде подождать и ввести /begin. Или начните снова"
+                                   " /new_story"),
+                             reply_markup=markup)
+    except:
         bot.send_message(chat_id,
                          text="Произошла ошибка. Попробуйде подождать и ввести /begin. Или начните снова /new_story",
                          reply_markup=markup)
