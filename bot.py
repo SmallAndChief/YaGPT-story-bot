@@ -37,6 +37,8 @@ bot.set_my_commands([BotCommand('start', 'начало работы'),
                      BotCommand('whole_story', 'весь сюжет'),
                      BotCommand('begin', 'начать генерить')])
 
+COMANDS = ['/start', '/help', '/debug', '/whole_story', '/begin', '/all_tokens', '/new_story']
+
 STORY_CHOICES = {"genre": ["хоррор", "фантастика", "детектив", "комедия"],
                  "character": ["доктор холмс", "гермиона", "кровавая мери", "павел воля"],
                  "setting": ["город", "магическая академия", "заброшка", "парк развлечений"]}
@@ -62,7 +64,7 @@ def help_message(message):
                      text=("Данный бот предлагает вам выбрать жанр, персонажа и сеттинг, чтобы придумать"
                            "какую-то историю при помощи YaGPT.\n/new_story - начать придумывать историю."
                            "Всего возможно придумать 3 истории ограничены в 1000 токенов.\n/end - завершить историю."
-                           "\nПосле всех выборов /begin - начать придумывание сюжета(после /new_story)."
+                           "\nПосле всех выборов /begin - начать или продолжить генерацию сюжета(после /new_story)."
                            "\n/all_tokens - количество использованных токенов за всё время."
                            "\n/whole_story - выводит всю историю целиком."
                            "Во время создания истории бот присылает часть её, вы её дополняете и бот "
@@ -160,7 +162,7 @@ def setting_message(message):
 
 
 @bot.message_handler(commands=['all_tokens'])
-def tokens_message(message):
+def tokens_message(message, expires_at=expires_at, iam_token=iam_token):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(help_button, new_button)
     chat_id = message.chat.id
@@ -172,11 +174,11 @@ def tokens_message(message):
                          reply_markup=markup)
         return
     tokens = 0
-    global expires_at, iam_token, token_data
     if expires_at < time.time():
         token_data = create_new_token()
         expires_at = time.time() + token_data['expires_in']
         iam_token = token_data['access_token']
+        logging.info("смена iam_token")
     for session in range(session_id):
         tokens += gpt.count_tokens_in_dialog(get_dialogue_for_user(user_id, session + 1), iam_token)
     bot.send_message(chat_id,
@@ -216,27 +218,35 @@ def story_message(message):
     gpt_request(message, begin=True)
 
 
-def gpt_request(message, begin=False):
+def gpt_request(message, begin=False, expires_at=expires_at, iam_token=iam_token):
     end = False
     warning = ""
     chat_id = message.chat.id
     user_id = message.from_user.id
     session_id = get_session_id(user_id=user_id)
-    global expires_at, iam_token, token_data
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
     if expires_at < time.time():
         token_data = create_new_token()
         expires_at = time.time() + token_data['expires_in']
         iam_token = token_data['access_token']
+        logging.info("смена iam_token")
     if not begin:
         content = message.text
+        if content in COMANDS:
+            bot.send_message(chat_id,
+                             text=("Генерация прервана. Повторно введите команду для её исполнения "
+                                   "или продолжите /begin"),
+                             reply_markup=markup)
+            logging.info(f"Генерация прервана {user_id}")
+            return
         if content == "/end":
             end = True
             insert_row(DB_TABLE_PROMTS_NAME, "(user_id, session_id, role, content)",
                        (user_id, session_id, "system", END_STORY))
+            logging.info(f"Завершение сюжета {user_id}")
         else:
             insert_row(DB_TABLE_PROMTS_NAME, "(user_id, session_id, role, content)",
                        (user_id, session_id, "user", content))
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
     try:
         messages = get_dialogue_for_user(user_id, session_id)
         tokens = gpt.count_tokens_in_dialog(messages, iam_token)
@@ -270,6 +280,7 @@ def gpt_request(message, begin=False):
         bot.send_message(chat_id,
                          text="Произошла ошибка. Попробуйде подождать и ввести /begin. Или начните снова /new_story",
                          reply_markup=markup)
+        logging.error(f"Непредусмотренная ошибка gpt_request {user_id}")
 
 
 @bot.message_handler(commands=['debug'])
